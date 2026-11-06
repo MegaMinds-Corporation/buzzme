@@ -10,6 +10,10 @@ function validateJoin(payload) {
     return { ok: false };
   }
 
+  // 18+ confirmation is required before the first match (spec section 8). Only the
+  // boolean true counts: "true", 1 or a missing field do not.
+  if (payload.ageConfirmed !== true) return { ok: false };
+
   if (typeof payload.nickname !== 'string') return { ok: false };
   const nickname = payload.nickname.trim().replace(/\s+/g, ' ');
   if (!NICKNAME_RE.test(nickname)) return { ok: false };

@@ -8,6 +8,7 @@ const { createApp } = require('../src/app');
 const { makeHasher } = require('../src/hash');
 
 const hash = makeHasher('t'.repeat(40));
+const AGE = { ageConfirmed: true }; // every valid join must carry the 18+ confirmation
 let passed = 0;
 let failed = 0;
 const check = (ok, label, detail = '') => {
@@ -55,7 +56,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   // ---- valid join ----
   let t = await start();
   let c = await client(t.url);
-  c.emit('join', { nickname: '  Kofi   Mensah ', mode: 'text' });
+  c.emit('join', { ...AGE, nickname: '  Kofi   Mensah ', mode: 'text' });
   check(await until(() => names(c) === 'waiting'), 'valid join -> waiting');
   const serverSide = [...t.io.sockets.sockets.values()][0];
   check(serverSide.data.nickname === 'Kofi Mensah', 'nickname is trimmed and whitespace-collapsed');
@@ -63,13 +64,13 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   check(t.calls.length === 1 && t.calls[0].deviceTokenHash === null, 'ban check ran once, no device token');
   check(/^[0-9a-f]{64}$/.test(t.calls[0].ipHash), 'ban check receives a hash, not an IP');
   check(t.calls[0].ipHash === hash('127.0.0.1'), 'hops=0 hashes the socket address');
-  c.emit('join', { nickname: 'Again', mode: 'text' });
+  c.emit('join', { ...AGE, nickname: 'Again', mode: 'text' });
   check(await until(() => c.events.some((e) => e.name === 'error' && e.payload.code === 'invalid')), 'second join -> invalid');
   c.close();
 
   // ---- default mode ----
   c = await client(t.url);
-  c.emit('join', { nickname: 'DefaultMode' });
+  c.emit('join', { ...AGE, nickname: 'DefaultMode' });
   await until(() => names(c) === 'waiting');
   const last = [...t.io.sockets.sockets.values()].pop();
   check(last.data.mode === 'video', 'mode defaults to video');
@@ -79,14 +80,18 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   const bad = [
     ['null payload', null],
     ['string payload', 'hello'],
-    ['missing nickname', { mode: 'text' }],
-    ['nickname not a string', { nickname: 42 }],
-    ['nickname too short', { nickname: 'a' }],
-    ['nickname too long', { nickname: 'x'.repeat(21) }],
-    ['nickname with markup', { nickname: '<script>x</script>' }],
-    ['unknown mode', { nickname: 'Valid', mode: 'audio' }],
-    ['device token wrong type', { nickname: 'Valid', deviceToken: 5 }],
-    ['device token too long', { nickname: 'Valid', deviceToken: 'x'.repeat(129) }],
+    ['missing nickname', { ...AGE, mode: 'text' }],
+    ['nickname not a string', { ...AGE, nickname: 42 }],
+    ['nickname too short', { ...AGE, nickname: 'a' }],
+    ['nickname too long', { ...AGE, nickname: 'x'.repeat(21) }],
+    ['nickname with markup', { ...AGE, nickname: '<script>x</script>' }],
+    ['unknown mode', { ...AGE, nickname: 'Valid', mode: 'audio' }],
+    ['device token wrong type', { ...AGE, nickname: 'Valid', deviceToken: 5 }],
+    ['device token too long', { ...AGE, nickname: 'Valid', deviceToken: 'x'.repeat(129) }],
+    ['18+ confirmation missing', { nickname: 'Valid', mode: 'text' }],
+    ['18+ confirmation false', { nickname: 'Valid', ageConfirmed: false }],
+    ['18+ confirmation as string', { nickname: 'Valid', ageConfirmed: 'true' }],
+    ['18+ confirmation as number', { nickname: 'Valid', ageConfirmed: 1 }],
   ];
   const before = t.calls.length;
   for (const [label, payload] of bad) {
@@ -102,7 +107,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   // ---- device token is hashed before the ban check ----
   t = await start();
   c = await client(t.url);
-  c.emit('join', { nickname: 'Tokened', deviceToken: 'secret-device-token' });
+  c.emit('join', { ...AGE, nickname: 'Tokened', deviceToken: 'secret-device-token' });
   await until(() => names(c) === 'waiting');
   check(t.calls[0].deviceTokenHash === hash('secret-device-token'), 'device token reaches the ban check hashed');
   check(t.calls[0].deviceTokenHash !== 'secret-device-token', 'raw device token is never passed on');
@@ -114,7 +119,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   c = await client(t.url);
   let disconnected = false;
   c.on('disconnect', () => { disconnected = true; });
-  c.emit('join', { nickname: 'Banned1' });
+  c.emit('join', { ...AGE, nickname: 'Banned1' });
   check(await until(() => c.events.some((e) => e.name === 'error' && e.payload.code === 'banned')), 'banned -> error banned');
   check(await until(() => disconnected), 'banned visitor is disconnected');
   check(!c.events.some((e) => e.name === 'waiting'), 'banned visitor never gets waiting');
@@ -124,7 +129,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   t = await start({}, async () => { throw new Error('db down'); });
   c = await client(t.url);
   const origErr = console.error; console.error = () => {};
-  c.emit('join', { nickname: 'DbDown1' });
+  c.emit('join', { ...AGE, nickname: 'DbDown1' });
   const gotErr = await until(() => c.events.some((e) => e.name === 'error' && e.payload.code === 'server_error'));
   console.error = origErr;
   check(gotErr, 'ban check failure -> error server_error');
@@ -135,7 +140,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   // ---- proxy handling ----
   t = await start({ trustedProxyHops: 1 });
   c = await client(t.url, { 'X-Forwarded-For': '9.9.9.9, 5.6.7.8' });
-  c.emit('join', { nickname: 'Proxied' });
+  c.emit('join', { ...AGE, nickname: 'Proxied' });
   await until(() => names(c) === 'waiting');
   check(t.calls[0].ipHash === hash('5.6.7.8'), 'hops=1 hashes the proxy-reported client, not the spoofed one');
   c.close();
@@ -143,7 +148,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
 
   t = await start({ trustedProxyHops: 0 });
   c = await client(t.url, { 'X-Forwarded-For': '9.9.9.9' });
-  c.emit('join', { nickname: 'Spoofer' });
+  c.emit('join', { ...AGE, nickname: 'Spoofer' });
   await until(() => names(c) === 'waiting');
   check(t.calls[0].ipHash === hash('127.0.0.1'), 'hops=0 ignores a spoofed X-Forwarded-For end to end');
   c.close();
@@ -155,7 +160,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   t = await start({}, () => gate);
   c = await client(t.url);
   const leaver = [...t.io.sockets.sockets.values()][0];
-  c.emit('join', { nickname: 'Leaver' });
+  c.emit('join', { ...AGE, nickname: 'Leaver' });
   await until(() => t.calls.length === 1);
   c.close();
   await until(() => leaver.disconnected);
@@ -169,7 +174,7 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   c = await client(t.url);
   let dropped = false;
   c.on('disconnect', () => { dropped = true; });
-  c.emit('join', { nickname: 'Big', deviceToken: 'x'.repeat(40 * 1024) });
+  c.emit('join', { ...AGE, nickname: 'Big', deviceToken: 'x'.repeat(40 * 1024) });
   check(await until(() => dropped), 'message over 32 KB drops the connection');
   check(t.calls.length === 0, 'oversized message never reaches the ban check');
   await t.close();

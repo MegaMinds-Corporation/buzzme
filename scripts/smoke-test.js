@@ -59,8 +59,9 @@ function tryJoin(label, payload) {
 
   const joins = [
     // [label, payload, expected reply]
-    ['join valid (real DB)', { nickname: 'SmokeTest', mode: 'text' }, 'waiting'],
-    ['join invalid        ', { nickname: '<b>', mode: 'text' }, 'error invalid'],
+    ['join valid (real DB)', { ageConfirmed: true, nickname: 'SmokeTest', mode: 'text' }, 'waiting'],
+    ['join invalid        ', { ageConfirmed: true, nickname: '<b>', mode: 'text' }, 'error invalid'],
+    ['join without 18+    ', { nickname: 'SmokeTest', mode: 'text' }, 'error invalid'],
   ];
   for (const [label, payload, expected] of joins) {
     const result = await tryJoin(label, payload);
