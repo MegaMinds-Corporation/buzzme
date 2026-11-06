@@ -20,6 +20,9 @@ function createApp({ config, isBanned, hash }) {
 
   const io = new Server(server, {
     cors: { origin: config.allowedOrigins },
+    // Hard cap on any single incoming message (spec section 8). Socket.IO closes the
+    // connection if a client exceeds it. 32 KB leaves room for WebRTC offers/answers.
+    maxHttpBufferSize: 32 * 1024,
     // Origin check on every connection attempt (spec section 8).
     allowRequest: (req, callback) => {
       const origin = req.headers.origin;
@@ -50,6 +53,9 @@ function createApp({ config, isBanned, hash }) {
           ipHash: socket.data.ipHash,
           deviceTokenHash: deviceToken === null ? null : hash(deviceToken),
         });
+        // The visitor may have left while the ban check was running. Do not admit a
+        // dead socket (it would end up in the matching queue later).
+        if (socket.disconnected) return;
         if (banned) {
           socket.emit('error', { code: 'banned' });
           socket.disconnect(true);

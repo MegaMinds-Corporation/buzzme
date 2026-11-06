@@ -149,6 +149,31 @@ const names = (s) => s.events.map((e) => e.name).join(',');
   c.close();
   await t.close();
 
+  // ---- visitor leaves while the ban check is running ----
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  t = await start({}, () => gate);
+  c = await client(t.url);
+  const leaver = [...t.io.sockets.sockets.values()][0];
+  c.emit('join', { nickname: 'Leaver' });
+  await until(() => t.calls.length === 1);
+  c.close();
+  await until(() => leaver.disconnected);
+  release(false);
+  await wait(100);
+  check(leaver.data.state !== 'joined', 'visitor who disconnects during the ban check is never admitted');
+  await t.close();
+
+  // ---- oversized message closes the connection ----
+  t = await start();
+  c = await client(t.url);
+  let dropped = false;
+  c.on('disconnect', () => { dropped = true; });
+  c.emit('join', { nickname: 'Big', deviceToken: 'x'.repeat(40 * 1024) });
+  check(await until(() => dropped), 'message over 32 KB drops the connection');
+  check(t.calls.length === 0, 'oversized message never reaches the ban check');
+  await t.close();
+
   console.log(`\npassed=${passed} failed=${failed}`);
   process.exit(failed === 0 ? 0 : 1);
 })();
