@@ -1,10 +1,10 @@
-# StrangeFriends — Technical Overview
+# BuzzMe — Technical Overview
 
 Version 1.0 · October 2026 · For team review
 
 ## 1. Project overview
 
-StrangeFriends is a mobile-friendly platform for meeting random strangers. Its signature feature is **random video chat**. Voice-only and text-only chat are lighter modes of the same product.
+BuzzMe is a mobile-friendly platform for meeting random strangers. Its signature feature is **random video chat**. Voice-only and text-only chat are lighter modes of the same product.
 
 Users join as guests (accounts come later), pick a nickname, choose a mode, get matched with a stranger, and can press **Next** to meet someone new, **Stop** to leave, or **Report** to flag abuse. Security and IP protection between strangers are core requirements, not extras.
 
