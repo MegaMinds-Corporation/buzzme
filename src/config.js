@@ -25,4 +25,16 @@ if (nodeEnv === 'production' && allowedOrigins.length === 0) {
   fail('ALLOWED_ORIGINS must be set in production');
 }
 
-module.exports = Object.freeze({ port, nodeEnv, allowedOrigins });
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  fail('DATABASE_URL is required');
+}
+
+// Secret key for hashing IPs and device tokens (spec section 7). Changing it
+// later makes every stored hash unmatchable, which silently lifts all bans.
+const ipHashSecret = process.env.IP_HASH_SECRET || '';
+if (ipHashSecret.length < 32) {
+  fail('IP_HASH_SECRET is required and must be at least 32 characters');
+}
+
+module.exports = Object.freeze({ port, nodeEnv, allowedOrigins, databaseUrl, ipHashSecret });

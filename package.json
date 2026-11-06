@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "test:smoke": "node scripts/smoke-test.js",
     "db:migrate": "node scripts/migrate.js",
-    "db:test": "node scripts/test-db.js"
+    "db:test": "node scripts/test-db.js",
+    "test:bans": "node scripts/test-bans.js"
   },
   "repository": {
     "type": "git",
