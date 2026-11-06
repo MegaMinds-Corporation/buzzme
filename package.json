@@ -1,17 +1,19 @@
 {
   "name": "buzzme",
   "version": "1.0.0",
-  "description": "is a mobile-friendly platform for meeting random strangers. Its signature feature is random video chat. Voice-only and text-only chat are lighter modes of the same product.",
+  "description": "BuzzMe is a mobile-friendly platform for meeting random strangers. Its signature feature is random video chat. Voice-only and text-only chat are lighter modes of the same product.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run test:ip && npm run test:join",
     "start": "node src/server.js",
     "test:smoke": "node scripts/smoke-test.js",
     "db:migrate": "node scripts/migrate.js",
     "db:test": "node scripts/test-db.js",
     "test:bans": "node scripts/test-bans.js",
     "test:ip": "node scripts/test-client-ip.js",
-    "test:join": "node scripts/test-join.js"
+    "test:join": "node scripts/test-join.js",
+    "test:db": "npm run db:test && npm run test:bans",
+    "test:all": "npm test && npm run test:db && npm run test:smoke"
   },
   "repository": {
     "type": "git",
