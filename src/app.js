@@ -5,10 +5,12 @@ const express = require('express');
 const { Server } = require('socket.io');
 const { getClientIp } = require('./clientIp');
 const { validateJoin } = require('./validate');
+const { createRealtime } = require('./realtime');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
-// on any port with fake dependencies. `isBanned` and `hash` are injected.
-function createApp({ config, isBanned, hash }) {
+// on any port with fake dependencies. `isBanned` and `hash` are injected;
+// `realtimeOptions` lets tests swap the matchmaker or shorten timers.
+function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
   const app = express();
   app.disable('x-powered-by');
 
@@ -30,10 +32,14 @@ function createApp({ config, isBanned, hash }) {
     },
   });
 
+  const realtime = createRealtime({ io, ...realtimeOptions });
+  server.on('close', realtime.close);
+
   io.on('connection', (socket) => {
     // Only the hash is kept; the raw IP is never stored or logged.
     socket.data.ipHash = hash(getClientIp(socket.request, config.trustedProxyHops));
     socket.data.state = 'new'; // new -> joining -> joined
+    realtime.attach(socket); // next, stop, message and disconnect handling
 
     socket.on('join', async (payload) => {
       if (socket.data.state !== 'new') {
@@ -72,13 +78,11 @@ function createApp({ config, isBanned, hash }) {
       socket.data.nickname = nickname;
       socket.data.mode = mode;
       socket.data.state = 'joined';
-      socket.emit('waiting');
+      realtime.admit(socket); // emits waiting or matched, plus the online count
     });
-
-    socket.on('disconnect', () => {});
   });
 
-  return { app, server, io };
+  return { app, server, io, realtime };
 }
 
 module.exports = { createApp };

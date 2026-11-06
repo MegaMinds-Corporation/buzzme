@@ -50,7 +50,7 @@ async function until(fn, ms = 1500) {
   while (Date.now() < end) { if (fn()) return true; await wait(20); }
   return false;
 }
-const names = (s) => s.events.map((e) => e.name).join(',');
+const names = (s) => s.events.filter((e) => e.name !== 'online').map((e) => e.name).join(','); // online counts are tested in test-realtime.js
 
 (async () => {
   // ---- valid join ----
