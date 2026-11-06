@@ -9,7 +9,9 @@
     "test:smoke": "node scripts/smoke-test.js",
     "db:migrate": "node scripts/migrate.js",
     "db:test": "node scripts/test-db.js",
-    "test:bans": "node scripts/test-bans.js"
+    "test:bans": "node scripts/test-bans.js",
+    "test:ip": "node scripts/test-client-ip.js",
+    "test:join": "node scripts/test-join.js"
   },
   "repository": {
     "type": "git",

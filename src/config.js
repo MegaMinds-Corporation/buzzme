@@ -37,4 +37,18 @@ if (ipHashSecret.length < 32) {
   fail('IP_HASH_SECRET is required and must be at least 32 characters');
 }
 
-module.exports = Object.freeze({ port, nodeEnv, allowedOrigins, databaseUrl, ipHashSecret });
+// How many of YOUR proxies (Nginx, a platform load balancer) sit in front of this
+// server. 0 = none: X-Forwarded-For is ignored. Wrong values let clients fake their IP.
+const trustedProxyHops = Number(process.env.TRUSTED_PROXY_HOPS || 0);
+if (!Number.isInteger(trustedProxyHops) || trustedProxyHops < 0 || trustedProxyHops > 5) {
+  fail(`TRUSTED_PROXY_HOPS must be an integer between 0 and 5 (got "${process.env.TRUSTED_PROXY_HOPS}")`);
+}
+
+module.exports = Object.freeze({
+  port,
+  nodeEnv,
+  allowedOrigins,
+  databaseUrl,
+  ipHashSecret,
+  trustedProxyHops,
+});
