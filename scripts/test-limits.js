@@ -6,6 +6,7 @@ const { io: connect } = require('socket.io-client');
 const { createApp } = require('../src/app');
 const { makeHasher } = require('../src/hash');
 
+const { DEFAULT_LIMITS } = require('../src/limits');
 const hash = makeHasher('t'.repeat(40));
 let passed = 0;
 let failed = 0;
@@ -14,13 +15,13 @@ const check = (ok, label, detail = '') => {
   ok ? passed++ : failed++;
 };
 
-async function start(limits = {}, overrides = {}) {
+async function start(limits = {}, overrides = {}, banCheck = null) {
   const calls = [];
   const config = { allowedOrigins: ['http://localhost:5173'], trustedProxyHops: 0, limits, ...overrides };
   const { server, io } = createApp({
     config,
     hash,
-    isBanned: async (args) => { calls.push(args); return false; },
+    isBanned: async (args) => { calls.push(args); return banCheck ? banCheck(args) : false; },
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   return {
@@ -135,6 +136,34 @@ async function joinOnce(url, nickname, headers) {
   check(!joiner.gone && got(joiner, 'waiting'), 'a socket that joined in time stays connected');
   joiner.close();
   await t.close();
+
+  // ---- join timeout also covers a ban check that never answers ----
+  t = await start({ joinTimeoutMs: 400 }, {}, () => new Promise(() => {}));
+  const stuck = await client(t.url);
+  stuck.emit('join', { nickname: 'Stuck1', mode: 'text', ageConfirmed: true });
+  await until(() => t.calls.length === 1);
+  check(await until(() => stuck.gone, 2000), 'a visitor whose ban check never answers is dropped');
+  await t.close();
+
+  // ---- overall event cap per socket ----
+  t = await start({ eventBurst: 20, eventsPerSecond: 5 });
+  const flooder = await client(t.url);
+  const bystander = await client(t.url);
+  for (let i = 0; i < 40; i++) flooder.emit('stop');
+  check(await until(() => got(flooder, 'error', 'rate_limited')), 'flooding events -> error rate_limited');
+  check(await until(() => flooder.gone), 'a flooding socket is disconnected');
+  await wait(100);
+  check(!bystander.gone && bystander.events.length === 0, 'another connection is not affected by the flood');
+  const polite = await client(t.url);
+  for (let i = 0; i < 10; i++) polite.emit('stop');
+  await wait(200);
+  check(!polite.gone && !got(polite, 'error', 'rate_limited'), 'normal bursts of events are fine');
+  [bystander, polite].forEach((c) => c.close());
+  await t.close();
+
+  // ---- shipped defaults are generous enough for shared addresses ----
+  check(DEFAULT_LIMITS.maxConnectionsPerIp >= 100 && DEFAULT_LIMITS.joinsPerMinute >= 120,
+    'default per-IP limits allow many people behind one address');
 
   // ---- message size cap ----
   t = await start({ maxMessageBytes: 1000 });

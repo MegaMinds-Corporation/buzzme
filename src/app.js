@@ -46,9 +46,17 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
   });
   const connectionsByIp = new Map(); // ip hash -> open sockets
 
+  // Coarse cap on EVERY incoming event from one socket (spec section 8). It sits far above
+  // normal use; a socket that goes over it is flooding and is disconnected.
+  const eventLimiter = createRateLimiter({
+    capacity: limits.eventBurst,
+    refillPerMs: limits.eventsPerSecond / 1000,
+  });
+
   server.on('close', () => {
     realtime.close();
     joinLimiter.stop();
+    eventLimiter.stop();
   });
 
   io.on('connection', (socket) => {
@@ -60,13 +68,15 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
     const open = (connectionsByIp.get(socket.data.ipHash) || 0) + 1;
     connectionsByIp.set(socket.data.ipHash, open);
 
-    // A socket that never joins is dropped (stops connection hoarding).
+    // A socket that has not finished joining in time is dropped: it never joined, or its
+    // ban check got stuck (stops connection hoarding).
     const joinTimer = setTimeout(() => {
-      if (socket.data.state === 'new') socket.disconnect(true);
+      if (socket.data.state !== 'joined') socket.disconnect(true);
     }, limits.joinTimeoutMs);
 
     socket.on('disconnect', () => {
       clearTimeout(joinTimer);
+      eventLimiter.forget(socket.id);
       const left = (connectionsByIp.get(socket.data.ipHash) || 1) - 1;
       if (left <= 0) connectionsByIp.delete(socket.data.ipHash);
       else connectionsByIp.set(socket.data.ipHash, left);
@@ -77,6 +87,12 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
       socket.disconnect(true);
       return;
     }
+
+    socket.use((packet, next) => {
+      if (eventLimiter.take(socket.id).allowed) return next();
+      socket.emit('error', { code: 'rate_limited' });
+      socket.disconnect(true);
+    });
 
     realtime.attach(socket); // next, stop, message and disconnect handling
 

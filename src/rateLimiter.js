@@ -1,14 +1,18 @@
 'use strict';
 
+const { performance } = require('perf_hooks');
+
 // In-memory token bucket, one bucket per key (e.g. an IP hash).
 // `capacity` tokens are available at once; they refill at `refillPerMs`.
 // A missing bucket is treated as full, so idle buckets can be swept safely.
 // When we scale to several server instances this is the piece that moves to Redis.
-function createRateLimiter({ capacity, refillPerMs, now = Date.now }) {
+// The default clock is monotonic (performance.now), so a system clock change cannot block
+// anyone; elapsed time is also clamped at 0 for injected clocks that go backwards.
+function createRateLimiter({ capacity, refillPerMs, now = () => performance.now() }) {
   const buckets = new Map();
 
   function refill(bucket, t) {
-    bucket.tokens = Math.min(capacity, bucket.tokens + (t - bucket.last) * refillPerMs);
+    bucket.tokens = Math.min(capacity, bucket.tokens + Math.max(0, t - bucket.last) * refillPerMs);
     bucket.last = t;
   }
 
@@ -32,7 +36,7 @@ function createRateLimiter({ capacity, refillPerMs, now = Date.now }) {
   function sweep() {
     const t = now();
     for (const [key, bucket] of buckets) {
-      if (bucket.tokens + (t - bucket.last) * refillPerMs >= capacity) buckets.delete(key);
+      if (bucket.tokens + Math.max(0, t - bucket.last) * refillPerMs >= capacity) buckets.delete(key);
     }
   }
 

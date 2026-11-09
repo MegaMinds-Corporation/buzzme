@@ -54,5 +54,24 @@ limiter.forget('s');
 check(limiter.size() === 0 && limiter.take('s').allowed, 'forget() releases a key, which then starts full');
 
 limiter.stop();
+
+// A clock that jumps backwards must never take tokens away or block anyone.
+{
+  let t = 100000;
+  const lim = createRateLimiter({ capacity: 3, refillPerMs: 3 / 60000, now: () => t });
+  lim.take('c');            // 2 tokens left
+  t = 50000;                // clock jumps back 50 seconds
+  const afterJump = [1, 2, 3].map(() => lim.take('c').allowed);
+  check(afterJump.join() === 'true,true,false', 'a backwards clock jump takes no tokens away', `(got ${afterJump})`);
+  lim.stop();
+}
+
+// The default clock is monotonic and works without an injected one.
+{
+  const lim = createRateLimiter({ capacity: 2, refillPerMs: 1 / 60000 });
+  check(lim.take('d').allowed && lim.take('d').allowed && !lim.take('d').allowed, 'the default clock works');
+  lim.stop();
+}
+
 console.log(`\npassed=${passed} failed=${failed}`);
 process.exit(failed === 0 ? 0 : 1);
