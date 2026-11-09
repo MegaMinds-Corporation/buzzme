@@ -21,7 +21,9 @@ const check = (ok, label, detail = '') => {
 const eq = (x, y) => { try { assert.deepStrictEqual(x, y); return true; } catch { return false; } };
 
 async function start(realtimeOptions = {}) {
-  const config = { allowedOrigins: ['http://localhost:5173'], trustedProxyHops: 0 };
+    // Many visitors share one address here; rate limits are proven in test-limits.js.
+  const limits = { joinsPerMinute: 10000, maxConnectionsPerIp: 10000, nextBurst: 10000, messageBurst: 10000 };
+  const config = { allowedOrigins: ['http://localhost:5173'], trustedProxyHops: 0, limits };
   const { server, io, realtime } = createApp({
     config,
     hash,

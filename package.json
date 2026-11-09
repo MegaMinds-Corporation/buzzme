@@ -4,7 +4,7 @@
   "description": "BuzzMe is a mobile-friendly platform for meeting random strangers. Its signature feature is random video chat. Voice-only and text-only chat are lighter modes of the same product.",
   "main": "index.js",
   "scripts": {
-    "test": "npm run test:ip && npm run test:join && npm run test:matchmaker && npm run test:realtime",
+    "test": "npm run test:ip && npm run test:join && npm run test:matchmaker && npm run test:realtime && npm run test:limiter && npm run test:limits",
     "start": "node src/server.js",
     "test:smoke": "node scripts/smoke-test.js",
     "db:migrate": "node scripts/migrate.js",
@@ -15,7 +15,9 @@
     "test:db": "npm run db:test && npm run test:bans",
     "test:all": "npm test && npm run test:db && npm run test:smoke",
     "test:matchmaker": "node scripts/test-matchmaker.js",
-    "test:realtime": "node scripts/test-realtime.js"
+    "test:realtime": "node scripts/test-realtime.js",
+    "test:limiter": "node scripts/test-rate-limiter.js",
+    "test:limits": "node scripts/test-limits.js"
   },
   "repository": {
     "type": "git",

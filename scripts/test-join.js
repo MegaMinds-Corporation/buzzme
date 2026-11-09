@@ -18,7 +18,9 @@ const check = (ok, label, detail = '') => {
 
 async function start(overrides = {}, isBanned = async () => false) {
   const calls = [];
-  const config = { allowedOrigins: ['http://localhost:5173'], trustedProxyHops: 0, ...overrides };
+    // These tests send many joins from one address; rate limits are proven in test-limits.js.
+  const limits = { joinsPerMinute: 10000, maxConnectionsPerIp: 10000 };
+  const config = { allowedOrigins: ['http://localhost:5173'], trustedProxyHops: 0, limits, ...overrides };
   const { server, io } = createApp({
     config,
     hash,

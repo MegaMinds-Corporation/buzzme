@@ -6,11 +6,15 @@ const { Server } = require('socket.io');
 const { getClientIp } = require('./clientIp');
 const { validateJoin } = require('./validate');
 const { createRealtime } = require('./realtime');
+const { createRateLimiter } = require('./rateLimiter');
+const { DEFAULT_LIMITS } = require('./limits');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
 // on any port with fake dependencies. `isBanned` and `hash` are injected;
 // `realtimeOptions` lets tests swap the matchmaker or shorten timers.
 function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
+  const limits = { ...DEFAULT_LIMITS, ...(config.limits || {}) };
+
   const app = express();
   app.disable('x-powered-by');
 
@@ -23,8 +27,8 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
   const io = new Server(server, {
     cors: { origin: config.allowedOrigins },
     // Hard cap on any single incoming message (spec section 8). Socket.IO closes the
-    // connection if a client exceeds it. 32 KB leaves room for WebRTC offers/answers.
-    maxHttpBufferSize: 32 * 1024,
+    // connection if a client exceeds it. The default (32 KB) leaves room for WebRTC offers/answers.
+    maxHttpBufferSize: limits.maxMessageBytes,
     // Origin check on every connection attempt (spec section 8).
     allowRequest: (req, callback) => {
       const origin = req.headers.origin;
@@ -32,18 +36,57 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
     },
   });
 
-  const realtime = createRealtime({ io, ...realtimeOptions });
-  server.on('close', realtime.close);
+  const realtime = createRealtime({ io, limits, ...realtimeOptions });
+
+  // Join attempts per IP hash. Every attempt counts, valid or not, and is counted
+  // BEFORE validation and the database ban check, so spamming cannot hammer the database.
+  const joinLimiter = createRateLimiter({
+    capacity: limits.joinsPerMinute,
+    refillPerMs: limits.joinsPerMinute / 60000,
+  });
+  const connectionsByIp = new Map(); // ip hash -> open sockets
+
+  server.on('close', () => {
+    realtime.close();
+    joinLimiter.stop();
+  });
 
   io.on('connection', (socket) => {
     // Only the hash is kept; the raw IP is never stored or logged.
     socket.data.ipHash = hash(getClientIp(socket.request, config.trustedProxyHops));
     socket.data.state = 'new'; // new -> joining -> joined
+
+    // Connection cap per IP. The slot is released on every kind of disconnect.
+    const open = (connectionsByIp.get(socket.data.ipHash) || 0) + 1;
+    connectionsByIp.set(socket.data.ipHash, open);
+
+    // A socket that never joins is dropped (stops connection hoarding).
+    const joinTimer = setTimeout(() => {
+      if (socket.data.state === 'new') socket.disconnect(true);
+    }, limits.joinTimeoutMs);
+
+    socket.on('disconnect', () => {
+      clearTimeout(joinTimer);
+      const left = (connectionsByIp.get(socket.data.ipHash) || 1) - 1;
+      if (left <= 0) connectionsByIp.delete(socket.data.ipHash);
+      else connectionsByIp.set(socket.data.ipHash, left);
+    });
+
+    if (open > limits.maxConnectionsPerIp) {
+      socket.emit('error', { code: 'rate_limited' });
+      socket.disconnect(true);
+      return;
+    }
+
     realtime.attach(socket); // next, stop, message and disconnect handling
 
     socket.on('join', async (payload) => {
       if (socket.data.state !== 'new') {
         socket.emit('error', { code: 'invalid' });
+        return;
+      }
+      if (!joinLimiter.take(socket.data.ipHash).allowed) {
+        socket.emit('error', { code: 'rate_limited' });
         return;
       }
       const parsed = validateJoin(payload);

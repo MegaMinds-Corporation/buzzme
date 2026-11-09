@@ -1,6 +1,7 @@
 'use strict';
 
 require('dotenv').config();
+const { DEFAULT_LIMITS } = require('./limits');
 
 function fail(message) {
   console.error(`[config] ${message}`);
@@ -44,6 +45,25 @@ if (!Number.isInteger(trustedProxyHops) || trustedProxyHops < 0 || trustedProxyH
   fail(`TRUSTED_PROXY_HOPS must be an integer between 0 and 5 (got "${process.env.TRUSTED_PROXY_HOPS}")`);
 }
 
+function intEnv(name, fallback, min, max) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    fail(`${name} must be an integer between ${min} and ${max} (got "${raw}")`);
+  }
+  return value;
+}
+
+// Only the limits worth tuning per deployment are environment variables; the rest
+// live in src/limits.js.
+const limits = Object.freeze({
+  ...DEFAULT_LIMITS,
+  maxConnectionsPerIp: intEnv('MAX_CONNECTIONS_PER_IP', DEFAULT_LIMITS.maxConnectionsPerIp, 1, 1000),
+  joinsPerMinute: intEnv('JOIN_RATE_PER_MINUTE', DEFAULT_LIMITS.joinsPerMinute, 1, 1000),
+  joinTimeoutMs: intEnv('JOIN_TIMEOUT_MS', DEFAULT_LIMITS.joinTimeoutMs, 1000, 3600000),
+});
+
 module.exports = Object.freeze({
   port,
   nodeEnv,
@@ -51,4 +71,5 @@ module.exports = Object.freeze({
   databaseUrl,
   ipHashSecret,
   trustedProxyHops,
+  limits,
 });

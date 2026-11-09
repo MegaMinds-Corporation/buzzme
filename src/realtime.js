@@ -2,6 +2,8 @@
 
 const { createMatchmaker } = require('./matchmaker');
 const { validateMessage } = require('./validate');
+const { createRateLimiter } = require('./rateLimiter');
+const { DEFAULT_LIMITS } = require('./limits');
 
 // Connects Socket.IO sockets to the matchmaker. app.js calls:
 //   attach(socket)  once per connection: registers next, stop, message and disconnect
@@ -13,12 +15,15 @@ const { validateMessage } = require('./validate');
 //   message {text}                        text from the partner
 //   partner_left                          the partner pressed Next/Stop or disconnected
 //   online {count}                        number of people currently on the service
-//   error {code}                          invalid | server_error
+//   error {code}                          invalid | rate_limited | server_error
 //
 // Privacy rules kept here: the partner only ever receives a nickname and message text,
 // never a socket id, session id or address, and message text is never stored or logged.
 //
-// Not here yet (next steps): rate limits, idle timeout, report flow, signaling.
+// Rate limits here are per visitor (socket): Next and message. Per-IP limits (connections,
+// joins) live in app.js.
+//
+// Not here yet (next steps): report flow, signaling.
 
 const MEMBERS_ROOM = 'members'; // everyone admitted; the audience for `online`
 
@@ -28,7 +33,14 @@ function createRealtime({
   // Minimum gap between `online` broadcasts, so a burst of joins does not make every
   // visitor receive one message per join.
   onlineIntervalMs = 1000,
+  limits = {},
 }) {
+  const L = { ...DEFAULT_LIMITS, ...limits };
+  const limiterFor = (burst, perMinute) =>
+    createRateLimiter({ capacity: burst, refillPerMs: perMinute / 60000 });
+  const nextLimiter = limiterFor(L.nextBurst, L.nextsPerMinute);
+  const messageLimiter = limiterFor(L.messageBurst, L.messagesPerMinute);
+
   let onlineTimer = null;
   let onlineDirty = false;
 
@@ -84,6 +96,7 @@ function createRealtime({
   };
 
   const reject = (socket) => socket.emit('error', { code: 'invalid' });
+  const limited = (socket) => socket.emit('error', { code: 'rate_limited' });
   const isMember = (socket) => socket.data.state === 'joined';
 
   // Puts a validated visitor (socket.data.nickname and .mode are set) into matching.
@@ -113,6 +126,7 @@ function createRealtime({
     // the place in the queue.
     socket.on('next', safe(socket, () => {
       if (!isMember(socket)) return reject(socket);
+      if (!nextLimiter.take(socket.id).allowed) return limited(socket);
       const result = matchmaker.next(socket.id);
       if (result.ended) sendTo(result.ended.partnerId, 'partner_left');
       if (result.status === 'matched') announceMatch(result);
@@ -133,6 +147,7 @@ function createRealtime({
     // normal race when the partner pressed Next a moment before the visitor hit send.
     socket.on('message', safe(socket, (payload) => {
       if (!isMember(socket)) return reject(socket);
+      if (!messageLimiter.take(socket.id).allowed) return limited(socket);
       const parsed = validateMessage(payload);
       if (!parsed.ok) return reject(socket);
       const partnerId = matchmaker.partnerOf(socket.id);
@@ -141,6 +156,8 @@ function createRealtime({
     }));
 
     socket.on('disconnect', safe(socket, () => {
+      nextLimiter.forget(socket.id);
+      messageLimiter.forget(socket.id);
       const wasMember = matchmaker.stateOf(socket.id) !== null;
       const { ended } = matchmaker.disconnect(socket.id);
       if (ended) sendTo(ended.partnerId, 'partner_left');
@@ -151,6 +168,8 @@ function createRealtime({
   function close() {
     clearTimeout(onlineTimer);
     onlineTimer = null;
+    nextLimiter.stop();
+    messageLimiter.stop();
   }
 
   return { attach, admit, close, matchmaker };
