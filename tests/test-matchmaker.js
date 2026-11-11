@@ -3,7 +3,7 @@
 // Tests src/services/matchmaker.js directly: no sockets, no database.
 
 const { createMatchmaker } = require('../src/services/matchmaker');
-const { MODES } = require('../src/validate');
+const { MODES } = require('../src/config/modes');
 
 let passed = 0;
 let failed = 0;

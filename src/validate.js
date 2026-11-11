@@ -1,6 +1,6 @@
 'use strict';
 
-const MODES = ['video', 'voice', 'text'];
+const { MODES } = require('./config/modes');
 // 2-20 characters: letters, numbers, underscore, hyphen, space (any language).
 const NICKNAME_RE = /^[\p{L}\p{N}_\- ]{2,20}$/u;
 
@@ -60,4 +60,4 @@ function validateMessage(payload) {
   return { ok: true, value: text };
 }
 
-module.exports = { validateJoin, validateMessage, MODES, MESSAGE_MAX_CHARS };
+module.exports = { validateJoin, validateMessage, MESSAGE_MAX_CHARS };
