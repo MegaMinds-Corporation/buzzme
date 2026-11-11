@@ -6,7 +6,7 @@ const { Server } = require('socket.io');
 const { getClientIp } = require('./utils/clientIp');
 const { validateJoin } = require('./validate');
 const { createRealtime } = require('./realtime');
-const { createRateLimiter } = require('./rateLimiter');
+const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it

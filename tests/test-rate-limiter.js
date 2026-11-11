@@ -1,6 +1,6 @@
 'use strict';
 
-const { createRateLimiter } = require('../src/rateLimiter');
+const { createRateLimiter } = require('../src/services/rateLimiter');
 
 let passed = 0;
 let failed = 0;
