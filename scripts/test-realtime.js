@@ -8,7 +8,7 @@ const assert = require('assert');
 const { io: connect } = require('socket.io-client');
 const { createApp } = require('../src/app');
 const { createMatchmaker } = require('../src/matchmaker');
-const { makeHasher } = require('../src/hash');
+const { makeHasher } = require('../src/utils/hash');
 const { validateMessage, MESSAGE_MAX_CHARS } = require('../src/validate');
 
 const hash = makeHasher('t'.repeat(40));
