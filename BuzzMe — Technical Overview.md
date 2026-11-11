@@ -1,6 +1,6 @@
 # BuzzMe — Technical Overview
 
-Version 1.0 · October 2026 · For team review
+Version 1.1 · November 2026 · For team review
 
 ## 1. Project overview
 
@@ -13,7 +13,7 @@ Users join as guests (accounts come later), pick a nickname, choose a mode, get 
 | Layer | Technology | Purpose |
 | --- | --- | --- |
 | Backend | Node.js + Socket.IO (Express for HTTP) | Matching, sessions, text relay, WebRTC signaling, moderation APIs |
-| Database | MySQL (PostgreSQL is an acceptable alternative) | Bans, reports, later accounts and preferences |
+| Database | PostgreSQL | Bans, reports, later accounts and preferences |
 | Temporary state | In-memory in v1; Redis when running more than one server instance | Waiting queues, active sessions, rate limits |
 | Real-time channel | WebSocket (Socket.IO) | Matching events, text chat, signaling |
 | Audio and video | WebRTC | Low-latency media between users |
@@ -27,7 +27,15 @@ Rust was evaluated and remains an option for the matchmaker later if load proves
 
 Clients connect to the Node server over secure WebSocket for matching, chat and signaling. Audio and video travel between the two clients through a coturn relay, never directly. The server keeps queues and live sessions in memory and uses the database only for bans and reports.
 
-&#91;embedded content: system architecture · 6 components\]
+```mermaid
+flowchart LR
+  A["Client A<br/>browser or app"] <-->|"WSS: matching, chat, signaling"| S["Node server<br/>Express + Socket.IO"]
+  B["Client B<br/>browser or app"] <-->|"WSS: matching, chat, signaling"| S
+  S --> D[("PostgreSQL<br/>bans and reports")]
+  S -.->|"later, for several servers"| R[("Redis")]
+  A <-->|"audio and video, forced relay"| T["coturn relay"]
+  B <-->|"audio and video, forced relay"| T
+`````
 
 The highlighted relay carries all audio and video; the Node server only handles matching, chat and signaling.
 
@@ -35,7 +43,16 @@ The highlighted relay carries all audio and video; the Node server only handles 
 
 A user opens the app, chooses a nickname and mode, and joins the queue. When matched, they chat by text, voice or video. From there they can press Next (back to the queue), Stop (end the session) or Report (save a report and end the session).
 
-&#91;embedded content: core user flow · 4 steps, 1 decision\]
+```mermaid
+flowchart TD
+  J["Join: nickname, mode, 18+ confirmed"] --> Q["Waiting queue"]
+  Q -->|"match found"| C["Chat session"]
+  C -->|"Next"| Q
+  C -->|"Stop"| E["Session ends"]
+  C -->|"Report"| RP["Report saved, session ends"]
+  C -->|"Partner leaves"| I["Idle until Next is pressed"]
+  I -->|"Next"| Q
+````
 
 Next sends the user back to the queue for a new match; Stop and Report both close the session.
 
@@ -55,21 +72,28 @@ Users are only matched with others in the same mode.
 
 | Client to server | Payload |
 | --- | --- |
-| `join` | nickname, mode |
+| `join` | ageConfirmed (must be true), nickname, mode (default video), optional deviceToken |
 | `next`, `stop` | none |
-| `message` | text |
+| `message` | text (plain text, at most 500 characters) |
 | `signal` | type (offer, answer, ice), data |
 | `report` | reason (also ends the session) |
 
 | Server to client | Payload |
 | --- | --- |
 | `waiting` | none |
-| `matched` | partner nickname, initiator flag, temporary TURN credentials |
+| `matched` | partner nickname, initiator flag (temporary TURN credentials are added with voice and video) |
 | `message` | text |
 | `signal` | relayed as-is after filtering |
 | `partner_left` | none |
-| `error` | code (banned, rate\_limited, invalid) |
+| `error` | code (invalid, banned, rate\_limited, server\_error) |
 | `online` | count |
+
+Behaviour notes:
+
+- A connection joins once; changing mode means reconnecting.
+- After `partner_left` the visitor is idle until the client sends `next`.
+- Next never returns the person just left; with only two people online both keep waiting until someone else joins.
+- A message sent when there is no partner is dropped without an error.
 
 ## 7. Data and privacy rules
 
@@ -99,6 +123,7 @@ Users are only matched with others in the same mode.
 - Every message is validated against a schema, with size caps on messages and signaling payloads.
 - Chat text is rendered as plain text to prevent XSS.
 - Heartbeats, idle timeouts, a connection cap per IP, and rate limits on Start, Next and messages.
+- Limits are per connection for Next and messages and per address for connections and joins, so people who share one public address do not throttle each other. Defaults are in `src/limits.js`.
 
 **User safety**
 
@@ -120,8 +145,8 @@ Users are only matched with others in the same mode.
 
 ## 10. Development phases
 
-1. **Foundation:** database schema, Node server scaffold, config, rate limiting.
-2. **Text MVP:** queue, matching, Next/Stop, message relay, ban check, report flow.
+1. **Foundation:** database schema, Node server scaffold, config, rate limiting. *Done.*
+2. **Text MVP:** queue, matching, Next/Stop, message relay, ban check, report flow. *In progress: everything except the report flow is done.*
 3. **Voice and video:** WebRTC signaling, forced TURN relay, mute and camera controls, reconnect handling.
 4. **Safety and accounts:** admin dashboard, temporary bans, optional accounts, blocks, verification.
 5. **Scale:** Redis-backed coordination, load testing, monitoring, multiple instances.
@@ -129,7 +154,12 @@ Users are only matched with others in the same mode.
 ## 11. Open decisions
 
 - Frontend technology (web, Flutter, React Native or other).
-- MySQL or PostgreSQL for the primary database.
 - Age and phone verification approach.
 - Hosting provider and region for the Node service and coturn.
 - Retention periods for reports and hashed IP data.
+
+## 12. Decisions made
+
+- **Database:** PostgreSQL (November 2026).
+- **Backend:** Node.js with Socket.IO and Express.
+- **Rate limits:** per connection for Next and messages, per address for connections and joins, with generous per-address defaults because mobile networks share addresses.
