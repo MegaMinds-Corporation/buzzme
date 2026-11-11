@@ -1,6 +1,6 @@
 'use strict';
 
-const { getClientIp, normalizeIp } = require('../src/clientIp');
+const { getClientIp, normalizeIp } = require('../src/utils/clientIp');
 
 let passed = 0;
 let failed = 0;

@@ -3,7 +3,7 @@
 const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
-const { getClientIp } = require('./clientIp');
+const { getClientIp } = require('./utils/clientIp');
 const { validateJoin } = require('./validate');
 const { createRealtime } = require('./realtime');
 const { createRateLimiter } = require('./rateLimiter');
