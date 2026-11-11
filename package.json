@@ -2,7 +2,7 @@
   "name": "buzzme",
   "version": "1.0.0",
   "description": "BuzzMe is a mobile-friendly platform for meeting random strangers. Its signature feature is random video chat. Voice-only and text-only chat are lighter modes of the same product.",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
     "test": "npm run test:ip && npm run test:join && npm run test:matchmaker && npm run test:realtime && npm run test:limiter && npm run test:limits",
     "start": "node src/server.js",
@@ -26,7 +26,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/MegaMinds-Corporation/buzzme/issues"
@@ -40,5 +40,8 @@
   },
   "devDependencies": {
     "socket.io-client": "^4.8.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
