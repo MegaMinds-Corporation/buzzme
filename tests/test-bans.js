@@ -1,13 +1,13 @@
 'use strict';
 
-// Tests src/hash.js and src/db.js (isBanned). Database checks run inside a
+// Tests src/utils/hash.js and src/db.js (isBanned). Database checks run inside a
 // transaction that is ALWAYS rolled back, in a temporary schema: nothing is saved.
 
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 const config = require('../src/config');
-const { makeHasher } = require('../src/hash');
+const { makeHasher } = require('../src/utils/hash');
 const { isBanned, close } = require('../src/db');
 
 let passed = 0;

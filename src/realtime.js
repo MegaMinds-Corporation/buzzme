@@ -2,8 +2,8 @@
 
 const { createMatchmaker } = require('./matchmaker');
 const { validateMessage } = require('./validate');
-const { createRateLimiter } = require('./rateLimiter');
-const { DEFAULT_LIMITS } = require('./limits');
+const { createRateLimiter } = require('./services/rateLimiter');
+const { DEFAULT_LIMITS } = require('./config/limits');
 
 // Connects Socket.IO sockets to the matchmaker. app.js calls:
 //   attach(socket)  once per connection: registers next, stop, message and disconnect

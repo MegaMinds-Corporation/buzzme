@@ -2,7 +2,7 @@
 
 const config = require('./config');
 const db = require('./db');
-const { makeHasher } = require('./hash');
+const { makeHasher } = require('./utils/hash');
 const { createApp } = require('./app');
 
 const { server, io } = createApp({

@@ -5,7 +5,7 @@
 
 const { io: connect } = require('socket.io-client');
 const { createApp } = require('../src/app');
-const { makeHasher } = require('../src/hash');
+const { makeHasher } = require('../src/utils/hash');
 
 const hash = makeHasher('t'.repeat(40));
 const AGE = { ageConfirmed: true }; // every valid join must carry the 18+ confirmation

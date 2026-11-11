@@ -2,23 +2,23 @@
   "name": "buzzme",
   "version": "1.0.0",
   "description": "BuzzMe is a mobile-friendly platform for meeting random strangers. Its signature feature is random video chat. Voice-only and text-only chat are lighter modes of the same product.",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
     "test": "npm run test:ip && npm run test:join && npm run test:matchmaker && npm run test:realtime && npm run test:limiter && npm run test:limits",
     "start": "node src/server.js",
-    "test:smoke": "node scripts/smoke-test.js",
+    "test:smoke": "node tests/smoke-test.js",
     "db:migrate": "node scripts/migrate.js",
-    "db:test": "node scripts/test-db.js",
-    "test:bans": "node scripts/test-bans.js",
-    "test:ip": "node scripts/test-client-ip.js",
-    "test:join": "node scripts/test-join.js",
+    "db:test": "node tests/test-db.js",
+    "test:bans": "node tests/test-bans.js",
+    "test:ip": "node tests/test-client-ip.js",
+    "test:join": "node tests/test-join.js",
     "test:db": "npm run db:test && npm run test:bans && npm run test:dbtimeout",
     "test:all": "npm test && npm run test:db && npm run test:smoke",
-    "test:matchmaker": "node scripts/test-matchmaker.js",
-    "test:realtime": "node scripts/test-realtime.js",
-    "test:limiter": "node scripts/test-rate-limiter.js",
-    "test:limits": "node scripts/test-limits.js",
-    "test:dbtimeout": "node scripts/test-db-timeout.js"
+    "test:matchmaker": "node tests/test-matchmaker.js",
+    "test:realtime": "node tests/test-realtime.js",
+    "test:limiter": "node tests/test-rate-limiter.js",
+    "test:limits": "node tests/test-limits.js",
+    "test:dbtimeout": "node tests/test-db-timeout.js"
   },
   "repository": {
     "type": "git",
@@ -26,7 +26,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/MegaMinds-Corporation/buzzme/issues"
@@ -40,5 +40,8 @@
   },
   "devDependencies": {
     "socket.io-client": "^4.8.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

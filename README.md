@@ -1,135 +1,151 @@
-# BuzzMe — Technical Overview
+<p align="center"><img src="buzzme_logo.png" alt="BuzzMe" width="160"></p>
 
-Version 1.0 · October 2026 · For team review
+# BuzzMe
 
-## 1. Project overview
+BuzzMe is a mobile-friendly platform for meeting random strangers. Its signature feature is **random video chat**; voice-only and text-only chat are lighter modes of the same product. Guests pick a nickname and a mode, get matched with a stranger, and can press **Next**, **Stop** or **Report** at any time.
 
-BuzzMe is a mobile-friendly platform for meeting random strangers. Its signature feature is **random video chat**. Voice-only and text-only chat are lighter modes of the same product.
+Design and decisions: [Technical Overview](BuzzMe%20%E2%80%94%20Technical%20Overview.md).
 
-Users join as guests (accounts come later), pick a nickname, choose a mode, get matched with a stranger, and can press **Next** to meet someone new, **Stop** to leave, or **Report** to flag abuse. Security and IP protection between strangers are core requirements, not extras.
+## Status
 
-## 2. Recommended stack
+| Area | State |
+| --- | --- |
+| Server foundation: config, database, IP hashing, ban check, 18+ confirmation | Working |
+| Matching: one queue per mode, Next and Stop, never re-pairs the last partner | Working |
+| Text chat relay and the online count | Working |
+| Rate limits and abuse protection | Working |
+| Report flow | Next |
+| Browser client | Not started (a plain test client comes first) |
+| Voice and video: WebRTC signaling, TURN relay | Not started |
+| Admin tools, accounts, Redis for several servers | Later |
 
-| Layer | Technology | Purpose |
-| --- | --- | --- |
-| Backend | Node.js + Socket.IO (Express for HTTP) | Matching, sessions, text relay, WebRTC signaling, moderation APIs |
-| Database | MySQL (PostgreSQL is an acceptable alternative) | Bans, reports, later accounts and preferences |
-| Temporary state | In-memory in v1; Redis when running more than one server instance | Waiting queues, active sessions, rate limits |
-| Real-time channel | WebSocket (Socket.IO) | Matching events, text chat, signaling |
-| Audio and video | WebRTC | Low-latency media between users |
-| Media relay | coturn (TURN), forced relay | Relays media so strangers never see each other's IPs |
-| Frontend | Not decided (web, Flutter, React Native or other) | The backend contract is client-agnostic |
-| Deployment | Linux VPS, Nginx with TLS | Node service, coturn, database |
+## Quick start
 
-Rust was evaluated and remains an option for the matchmaker later if load proves it necessary. The first version favors speed of delivery and maintainability.
+You need Node.js 20 or newer and a PostgreSQL database.
 
-## 3. System architecture
+`````bash
+git clone https://github.com/MegaMinds-Corporation/buzzme.git
+cd buzzme
+npm install
+cp .env.example .env        # then fill in the values (see Configuration)
+npm run db:migrate          # creates the bans and reports tables (safe to repeat)
+npm start
+`````
 
-Clients connect to the Node server over secure WebSocket for matching, chat and signaling. Audio and video travel between the two clients through a coturn relay, never directly. The server keeps queues and live sessions in memory and uses the database only for bans and reports.
+Check that it is up:
 
-&#91;embedded content: system architecture · 6 components\]
+`````bash
+curl http://localhost:3000/health
+# {"status":"ok","uptime":3}
+`````
 
-The highlighted relay carries all audio and video; the Node server only handles matching, chat and signaling.
+Generate a value for `IP_HASH_SECRET`:
 
-## 4. Core user flow
+`````bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+`````
 
-A user opens the app, chooses a nickname and mode, and joins the queue. When matched, they chat by text, voice or video. From there they can press Next (back to the queue), Stop (end the session) or Report (save a report and end the session).
+In GitHub Codespaces, add the forwarded URL of your browser client to `ALLOWED_ORIGINS` once you have one.
 
-&#91;embedded content: core user flow · 4 steps, 1 decision\]
+## Configuration
 
-Next sends the user back to the queue for a new match; Stop and Report both close the session.
+Set these in `.env` (see `.env.example`). The server refuses to start if a required value is missing or invalid.
 
-## 5. Session modes
-
-One matching and session system serves every mode. Each session has a mode that decides which capabilities the client enables.
-
-| Mode | Camera | Microphone | Text chat |
+| Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| Video (default) | Yes | Yes | Yes |
-| Voice | No | Yes | Yes |
-| Text | No | No | Yes |
+| `DATABASE_URL` | yes | none | PostgreSQL connection string. Keep `sslmode=verify-full` for hosted databases. |
+| `IP_HASH_SECRET` | yes | none | At least 32 characters. Used to hash IPs and device tokens. **Changing it later makes every stored hash unmatchable, which lifts all bans.** |
+| `PORT` | no | `3000` | Port to listen on. |
+| `NODE_ENV` | no | `development` | `development`, `production` or `test`. |
+| `ALLOWED_ORIGINS` | in production | empty | Comma-separated browser origins allowed to open a WebSocket. Connections without an `Origin` header (native apps, scripts) are always accepted. |
+| `TRUSTED_PROXY_HOPS` | no | `0` | How many of your own proxies (Nginx, a platform load balancer) sit in front of the server. A wrong value lets clients fake their IP. |
+| `MAX_CONNECTIONS_PER_IP` | no | `100` | Simultaneous connections allowed per address. |
+| `JOIN_RATE_PER_MINUTE` | no | `120` | Join attempts allowed per address per minute, valid or not. |
+| `JOIN_TIMEOUT_MS` | no | `60000` | A connection that has not finished joining by then is dropped. |
 
-Users are only matched with others in the same mode.
+Other limits live in `src/limits.js`:
 
-## 6. Real-time event contract
+| Limit | Default |
+| --- | --- |
+| Largest single socket message | 32 KB |
+| Next presses | burst of 5, then 20 per minute, per visitor |
+| Chat messages | burst of 10, then 120 per minute, per visitor |
+| Any events from one connection | burst of 100, then 50 per second (going over disconnects it) |
+
+Next and message limits are per visitor, and connection and join limits are per address. Many people share one public address on mobile networks, offices and campuses, so the per-address defaults are generous and nobody is throttled by their neighbours' chatting.
+
+## The live protocol
+
+The client talks to the server over Socket.IO. Events implemented today:
 
 | Client to server | Payload |
 | --- | --- |
-| `join` | nickname, mode |
-| `next`, `stop` | none |
-| `message` | text |
-| `signal` | type (offer, answer, ice), data |
-| `report` | reason (also ends the session) |
+| `join` | `{ ageConfirmed: true, nickname, mode?, deviceToken? }`. `ageConfirmed` must be the boolean `true`. `nickname` is 2 to 20 letters, numbers, spaces, `_` or `-`. `mode` is `video` (default), `voice` or `text`. `deviceToken` is an optional string of up to 128 characters. |
+| `next` | none. Leave the current partner, if any, and search for someone new. |
+| `stop` | none. End the session or leave the queue. The connection stays open. |
+| `message` | `{ text }`. Plain text, at most 500 characters. |
 
 | Server to client | Payload |
 | --- | --- |
-| `waiting` | none |
-| `matched` | partner nickname, initiator flag, temporary TURN credentials |
-| `message` | text |
-| `signal` | relayed as-is after filtering |
-| `partner_left` | none |
-| `error` | code (banned, rate\_limited, invalid) |
-| `online` | count |
+| `waiting` | none. In the queue. |
+| `matched` | `{ partnerNickname, initiator }`. `initiator: true` means this side sends the WebRTC offer. |
+| `message` | `{ text }`. From the partner. |
+| `partner_left` | none. The partner pressed Next or Stop, or disconnected. |
+| `online` | `{ count }`. People currently on the service. |
+| `error` | `{ code }`, one of the codes below. |
 
-## 7. Data and privacy rules
-
-| Data | Stored? | Notes |
-| --- | --- | --- |
-| Chat messages | No | In memory only; never in logs, analytics or backups |
-| Audio and video | No | Never recorded |
-| Waiting queue and active sessions | Temporarily | In memory |
-| Reports | Yes | Include a short message snapshot only when a user files a report |
-| Bans | Yes | Keyed hash of IP plus a device token |
-| IP addresses | Hashed only | HMAC with a server secret; documented retention limit |
-| Accounts and preferences | Later phase | Guests need no account |
-
-## 8. Security and IP protection
-
-**IP protection between strangers**
-
-- Clients use `iceTransportPolicy: "relay"`, so only the relay's address is ever offered to the other user.
-- The server filters relayed signaling and drops `host` and `srflx` ICE candidates as a second layer.
-- TURN credentials are short-lived and issued per session (coturn time-limited HMAC credentials).
-- coturn blocks relaying to private IP ranges, sets per-user quotas, and offers TURN over TLS on port 443.
-- Users never receive another user's IP, internal ID or account details. Sessions use random IDs.
-
-**Application hardening**
-
-- HTTPS and WSS only, with HSTS, a strict CSP and an Origin check on WebSocket upgrades.
-- Every message is validated against a schema, with size caps on messages and signaling payloads.
-- Chat text is rendered as plain text to prevent XSS.
-- Heartbeats, idle timeouts, a connection cap per IP, and rate limits on Start, Next and messages.
-
-**User safety**
-
-- Ban check on every join. Report button available at all times and ends the session immediately.
-- 18+ confirmation before the first match, nickname filtering, and optional phone verification later to deter ban evasion.
-
-**Known limits**
-
-- Media is end-to-end encrypted between browsers, so the server cannot scan video. Moderation relies on reports, bans and verification unless an SFU is adopted later.
-- The relay operator can see IPs, so the platform must never promise absolute anonymity.
-- Forced relay means all video bandwidth flows through coturn. This is the main running cost.
-
-## 9. Data model (first version)
-
-| Table | Key fields |
+| Error code | Meaning |
 | --- | --- |
-| `bans` | id, ip\_hash, device\_token, reason, expires\_at, created\_at |
-| `reports` | id, reporter\_ip\_hash, reported\_ip\_hash, mode, reason, message\_snapshot (JSON, text mode only), created\_at |
+| `invalid` | Malformed input, or an event sent at the wrong time (for example `message` before joining, or joining twice). |
+| `banned` | The address or device is banned. The connection is closed. |
+| `rate_limited` | Too many connections, joins, Next presses or messages. |
+| `server_error` | Something failed on the server. Safe to retry. |
 
-## 10. Development phases
+Behaviour to build the client around:
 
-1. **Foundation:** database schema, Node server scaffold, config, rate limiting.
-2. **Text MVP:** queue, matching, Next/Stop, message relay, ban check, report flow.
-3. **Voice and video:** WebRTC signaling, forced TURN relay, mute and camera controls, reconnect handling.
-4. **Safety and accounts:** admin dashboard, temporary bans, optional accounts, blocks, verification.
-5. **Scale:** Redis-backed coordination, load testing, monitoring, multiple instances.
+- A connection joins once. To change mode, reconnect.
+- After `partner_left` the visitor is idle until the client sends `next`, so the UI should offer "Find someone new" or send it automatically.
+- Next never gives the person you just left. With only two people online, both keep waiting until a third arrives.
+- A message sent when there is no partner is dropped without an error.
+- Nicknames and messages come from strangers: render them as plain text, never as HTML.
 
-## 11. Open decisions
+Planned: `signal` and `report` events, and temporary TURN credentials inside `matched`.
 
-- Frontend technology (web, Flutter, React Native or other).
-- MySQL or PostgreSQL for the primary database.
-- Age and phone verification approach.
-- Hosting provider and region for the Node service and coturn.
-- Retention periods for reports and hashed IP data.
+## Privacy rules kept by the code
+
+- Chat messages are relayed from memory and never stored or logged.
+- Raw IP addresses are never stored or logged, only an HMAC hash.
+- A partner only ever receives a nickname and message text: no socket id, session id, address or device token.
+- The ban check runs on every join and fails closed: if the database cannot answer, the visitor is not admitted.
+
+## Project layout
+
+`````
+src/
+  server.js        starts the server, handles shutdown
+  app.js           HTTP and Socket.IO setup, origin check, join flow, connection limits
+  realtime.js      connects sockets to the matchmaker: matched, message, next, stop, online
+  matchmaker.js    queues, pairing and sessions, no sockets inside
+  validate.js      join and message validation
+  clientIp.js      real client address behind proxies
+  hash.js          HMAC hashing of IPs and device tokens
+  rateLimiter.js   token-bucket limiter
+  limits.js        default limits
+  config.js        environment variables, validated at startup
+  db.js            PostgreSQL pool and the ban check
+db/schema.sql      bans and reports tables
+scripts/           migrate.js and all tests
+`````
+
+## Tests
+
+| Command | What it runs | Needs the database |
+| --- | --- | --- |
+| `npm test` | IP handling, join validation, matchmaker, realtime, limiter, limits | no |
+| `npm run test:db` | database queries, ban lookups, database timeout | yes |
+| `npm run test:smoke` | starts a real server and checks the join flow end to end | yes |
+| `npm run test:all` | everything above | yes |
+
+## License
+
+MIT. See [LICENSE](LICENSE).

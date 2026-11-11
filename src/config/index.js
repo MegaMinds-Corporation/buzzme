@@ -56,7 +56,7 @@ function intEnv(name, fallback, min, max) {
 }
 
 // Only the limits worth tuning per deployment are environment variables; the rest
-// live in src/limits.js.
+// live in src/config/limits.js.
 const limits = Object.freeze({
   ...DEFAULT_LIMITS,
   maxConnectionsPerIp: intEnv('MAX_CONNECTIONS_PER_IP', DEFAULT_LIMITS.maxConnectionsPerIp, 1, 1000),

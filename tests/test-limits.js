@@ -4,9 +4,9 @@
 
 const { io: connect } = require('socket.io-client');
 const { createApp } = require('../src/app');
-const { makeHasher } = require('../src/hash');
+const { makeHasher } = require('../src/utils/hash');
 
-const { DEFAULT_LIMITS } = require('../src/limits');
+const { DEFAULT_LIMITS } = require('../src/config/limits');
 const hash = makeHasher('t'.repeat(40));
 let passed = 0;
 let failed = 0;
