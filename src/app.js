@@ -7,7 +7,7 @@ const { getClientIp } = require('./clientIp');
 const { validateJoin } = require('./validate');
 const { createRealtime } = require('./realtime');
 const { createRateLimiter } = require('./rateLimiter');
-const { DEFAULT_LIMITS } = require('./limits');
+const { DEFAULT_LIMITS } = require('./config/limits');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
 // on any port with fake dependencies. `isBanned` and `hash` are injected;

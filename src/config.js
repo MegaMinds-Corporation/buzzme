@@ -1,7 +1,7 @@
 'use strict';
 
 require('dotenv').config();
-const { DEFAULT_LIMITS } = require('./limits');
+const { DEFAULT_LIMITS } = require('./config/limits');
 
 function fail(message) {
   console.error(`[config] ${message}`);
