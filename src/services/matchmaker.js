@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { MODES } = require('./validate');
+const { MODES } = require('../validate');
 
 // In-memory matchmaker: one waiting queue per mode, the live sessions, and who each
 // user talked to last. It knows nothing about sockets, IPs or the database. Callers

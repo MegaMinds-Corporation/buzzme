@@ -1,6 +1,6 @@
 'use strict';
 
-const { createMatchmaker } = require('./matchmaker');
+const { createMatchmaker } = require('./services/matchmaker');
 const { validateMessage } = require('./validate');
 const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');

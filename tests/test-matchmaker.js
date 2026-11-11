@@ -1,8 +1,8 @@
 'use strict';
 
-// Tests src/matchmaker.js directly: no sockets, no database.
+// Tests src/services/matchmaker.js directly: no sockets, no database.
 
-const { createMatchmaker } = require('../src/matchmaker');
+const { createMatchmaker } = require('../src/services/matchmaker');
 const { MODES } = require('../src/validate');
 
 let passed = 0;
