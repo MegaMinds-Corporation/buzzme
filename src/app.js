@@ -8,6 +8,7 @@ const { validateJoin } = require('./validators/join');
 const { createRealtime } = require('./realtime');
 const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');
+const { createOriginCheck } = require('./middleware/originCheck');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
 // on any port with fake dependencies. `isBanned` and `hash` are injected;
@@ -29,11 +30,7 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
     // Hard cap on any single incoming message (spec section 8). Socket.IO closes the
     // connection if a client exceeds it. The default (32 KB) leaves room for WebRTC offers/answers.
     maxHttpBufferSize: limits.maxMessageBytes,
-    // Origin check on every connection attempt (spec section 8).
-    allowRequest: (req, callback) => {
-      const origin = req.headers.origin;
-      callback(null, !origin || config.allowedOrigins.includes(origin));
-    },
+    allowRequest: createOriginCheck(config.allowedOrigins), // origin check (spec section 8)
   });
 
   const realtime = createRealtime({ io, limits, ...realtimeOptions });
