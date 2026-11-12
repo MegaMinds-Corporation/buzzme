@@ -11,6 +11,7 @@ const { DEFAULT_LIMITS } = require('./config/limits');
 const { createOriginCheck } = require('./middleware/originCheck');
 const { attachJoinTimeout } = require('./middleware/joinTimeout');
 const { createConnectionCap } = require('./middleware/connectionCap');
+const { createEventLimit } = require('./middleware/eventLimit');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
 // on any port with fake dependencies. `isBanned` and `hash` are injected;
@@ -45,17 +46,12 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
   });
   const connectionCap = createConnectionCap(limits.maxConnectionsPerIp);
 
-  // Coarse cap on EVERY incoming event from one socket (spec section 8). It sits far above
-  // normal use; a socket that goes over it is flooding and is disconnected.
-  const eventLimiter = createRateLimiter({
-    capacity: limits.eventBurst,
-    refillPerMs: limits.eventsPerSecond / 1000,
-  });
+  const eventLimit = createEventLimit({ burst: limits.eventBurst, perSecond: limits.eventsPerSecond });
 
   server.on('close', () => {
     realtime.close();
     joinLimiter.stop();
-    eventLimiter.stop();
+    eventLimit.stop();
   });
 
   io.on('connection', (socket) => {
@@ -67,15 +63,7 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
 
     attachJoinTimeout(socket, limits.joinTimeoutMs);
 
-    socket.on('disconnect', () => {
-      eventLimiter.forget(socket.id);
-    });
-
-    socket.use((packet, next) => {
-      if (eventLimiter.take(socket.id).allowed) return next();
-      socket.emit('error', { code: 'rate_limited' });
-      socket.disconnect(true);
-    });
+    eventLimit.attach(socket); // flood protection on every incoming event
 
     realtime.attach(socket); // next, stop, message and disconnect handling
 
