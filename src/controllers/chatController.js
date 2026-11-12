@@ -1,10 +1,10 @@
 'use strict';
 
-const { createMatchmaker } = require('./services/matchmaker');
-const { createPresence } = require('./services/presence');
-const { validateMessage } = require('./validators/message');
-const { createRateLimiter } = require('./services/rateLimiter');
-const { DEFAULT_LIMITS } = require('./config/limits');
+const { createMatchmaker } = require('../services/matchmaker');
+const { createPresence } = require('../services/presence');
+const { validateMessage } = require('../validators/message');
+const { createRateLimiter } = require('../services/rateLimiter');
+const { DEFAULT_LIMITS } = require('../config/limits');
 
 // Connects Socket.IO sockets to the matchmaker. app.js calls:
 //   attach(socket)  once per connection: registers next, stop, message and disconnect
@@ -22,11 +22,11 @@ const { DEFAULT_LIMITS } = require('./config/limits');
 // never a socket id, session id or address, and message text is never stored or logged.
 //
 // Rate limits here are per visitor (socket): Next and message. Per-IP limits (connections,
-// joins) live in app.js.
+// joins) live in middleware/connectionCap.js and app.js.
 //
 // Not here yet (next steps): report flow, signaling.
 
-function createRealtime({
+function createChatController({
   io,
   matchmaker = createMatchmaker(),
   // Minimum gap between `online` broadcasts, so a burst of joins does not make every
@@ -151,4 +151,4 @@ function createRealtime({
   return { attach, admit, close, matchmaker };
 }
 
-module.exports = { createRealtime };
+module.exports = { createChatController };

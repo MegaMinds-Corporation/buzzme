@@ -1,7 +1,7 @@
 'use strict';
 
 // Single source of defaults. config.js overlays environment variables on these;
-// app.js and realtime.js overlay whatever limits they are given (tests pass small values).
+// app.js and controllers/chatController.js overlay whatever limits they are given (tests pass small values).
 //
 // Per-IP limits (connections, joins) are keyed by the IP hash, because at that point the
 // visitor has no other identity. Per-visitor limits (next, message) are keyed by socket,

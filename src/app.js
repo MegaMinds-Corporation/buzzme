@@ -4,7 +4,7 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 const { getClientIp } = require('./utils/clientIp');
-const { createRealtime } = require('./realtime');
+const { createChatController } = require('./controllers/chatController');
 const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');
 const { createOriginCheck } = require('./middleware/originCheck');
@@ -36,7 +36,7 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
     allowRequest: createOriginCheck(config.allowedOrigins), // origin check (spec section 8)
   });
 
-  const realtime = createRealtime({ io, limits, ...realtimeOptions });
+  const realtime = createChatController({ io, limits, ...realtimeOptions });
 
   // Join attempts per IP hash. Every attempt counts, valid or not, and is counted
   // BEFORE validation and the database ban check, so spamming cannot hammer the database.
