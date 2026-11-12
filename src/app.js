@@ -10,6 +10,7 @@ const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');
 const { createOriginCheck } = require('./middleware/originCheck');
 const { attachJoinTimeout } = require('./middleware/joinTimeout');
+const { createConnectionCap } = require('./middleware/connectionCap');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
 // on any port with fake dependencies. `isBanned` and `hash` are injected;
@@ -42,7 +43,7 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
     capacity: limits.joinsPerMinute,
     refillPerMs: limits.joinsPerMinute / 60000,
   });
-  const connectionsByIp = new Map(); // ip hash -> open sockets
+  const connectionCap = createConnectionCap(limits.maxConnectionsPerIp);
 
   // Coarse cap on EVERY incoming event from one socket (spec section 8). It sits far above
   // normal use; a socket that goes over it is flooding and is disconnected.
@@ -62,24 +63,13 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
     socket.data.ipHash = hash(getClientIp(socket.request, config.trustedProxyHops));
     socket.data.state = 'new'; // new -> joining -> joined
 
-    // Connection cap per IP. The slot is released on every kind of disconnect.
-    const open = (connectionsByIp.get(socket.data.ipHash) || 0) + 1;
-    connectionsByIp.set(socket.data.ipHash, open);
+    if (!connectionCap.attach(socket)) return; // per-IP connection cap
 
     attachJoinTimeout(socket, limits.joinTimeoutMs);
 
     socket.on('disconnect', () => {
       eventLimiter.forget(socket.id);
-      const left = (connectionsByIp.get(socket.data.ipHash) || 1) - 1;
-      if (left <= 0) connectionsByIp.delete(socket.data.ipHash);
-      else connectionsByIp.set(socket.data.ipHash, left);
     });
-
-    if (open > limits.maxConnectionsPerIp) {
-      socket.emit('error', { code: 'rate_limited' });
-      socket.disconnect(true);
-      return;
-    }
 
     socket.use((packet, next) => {
       if (eventLimiter.take(socket.id).allowed) return next();
