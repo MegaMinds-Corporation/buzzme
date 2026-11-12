@@ -4,7 +4,6 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 const { getClientIp } = require('./utils/clientIp');
-const { validateJoin } = require('./validators/join');
 const { createRealtime } = require('./realtime');
 const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');
@@ -12,6 +11,7 @@ const { createOriginCheck } = require('./middleware/originCheck');
 const { attachJoinTimeout } = require('./middleware/joinTimeout');
 const { createConnectionCap } = require('./middleware/connectionCap');
 const { createEventLimit } = require('./middleware/eventLimit');
+const { createJoinController } = require('./controllers/joinController');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
 // on any port with fake dependencies. `isBanned` and `hash` are injected;
@@ -47,6 +47,7 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
   const connectionCap = createConnectionCap(limits.maxConnectionsPerIp);
 
   const eventLimit = createEventLimit({ burst: limits.eventBurst, perSecond: limits.eventsPerSecond });
+  const joinController = createJoinController({ joinLimiter, isBanned, hash, admit: (socket) => realtime.admit(socket) });
 
   server.on('close', () => {
     realtime.close();
@@ -67,49 +68,7 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
 
     realtime.attach(socket); // next, stop, message and disconnect handling
 
-    socket.on('join', async (payload) => {
-      if (socket.data.state !== 'new') {
-        socket.emit('error', { code: 'invalid' });
-        return;
-      }
-      if (!joinLimiter.take(socket.data.ipHash).allowed) {
-        socket.emit('error', { code: 'rate_limited' });
-        return;
-      }
-      const parsed = validateJoin(payload);
-      if (!parsed.ok) {
-        socket.emit('error', { code: 'invalid' });
-        return;
-      }
-
-      socket.data.state = 'joining'; // blocks a second join while the ban check is running
-      const { nickname, mode, deviceToken } = parsed.value;
-      try {
-        const banned = await isBanned({
-          ipHash: socket.data.ipHash,
-          deviceTokenHash: deviceToken === null ? null : hash(deviceToken),
-        });
-        // The visitor may have left while the ban check was running. Do not admit a
-        // dead socket (it would end up in the matching queue later).
-        if (socket.disconnected) return;
-        if (banned) {
-          socket.emit('error', { code: 'banned' });
-          socket.disconnect(true);
-          return;
-        }
-      } catch (err) {
-        // Fail closed: if we cannot check bans, nobody joins.
-        console.error('[join] ban check failed:', err.message);
-        socket.data.state = 'new';
-        socket.emit('error', { code: 'server_error' });
-        return;
-      }
-
-      socket.data.nickname = nickname;
-      socket.data.mode = mode;
-      socket.data.state = 'joined';
-      realtime.admit(socket); // emits waiting or matched, plus the online count
-    });
+    socket.on('join', (payload) => joinController.join(socket, payload));
   });
 
   return { app, server, io, realtime };
