@@ -9,6 +9,7 @@ const { createRealtime } = require('./realtime');
 const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');
 const { createOriginCheck } = require('./middleware/originCheck');
+const { attachJoinTimeout } = require('./middleware/joinTimeout');
 
 // Builds the HTTP + Socket.IO server WITHOUT listening, so tests can start it
 // on any port with fake dependencies. `isBanned` and `hash` are injected;
@@ -65,14 +66,9 @@ function createApp({ config, isBanned, hash, realtimeOptions = {} }) {
     const open = (connectionsByIp.get(socket.data.ipHash) || 0) + 1;
     connectionsByIp.set(socket.data.ipHash, open);
 
-    // A socket that has not finished joining in time is dropped: it never joined, or its
-    // ban check got stuck (stops connection hoarding).
-    const joinTimer = setTimeout(() => {
-      if (socket.data.state !== 'joined') socket.disconnect(true);
-    }, limits.joinTimeoutMs);
+    attachJoinTimeout(socket, limits.joinTimeoutMs);
 
     socket.on('disconnect', () => {
-      clearTimeout(joinTimer);
       eventLimiter.forget(socket.id);
       const left = (connectionsByIp.get(socket.data.ipHash) || 1) - 1;
       if (left <= 0) connectionsByIp.delete(socket.data.ipHash);
