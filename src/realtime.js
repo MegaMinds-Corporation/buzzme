@@ -1,6 +1,7 @@
 'use strict';
 
 const { createMatchmaker } = require('./services/matchmaker');
+const { createPresence } = require('./services/presence');
 const { validateMessage } = require('./validators/message');
 const { createRateLimiter } = require('./services/rateLimiter');
 const { DEFAULT_LIMITS } = require('./config/limits');
@@ -25,8 +26,6 @@ const { DEFAULT_LIMITS } = require('./config/limits');
 //
 // Not here yet (next steps): report flow, signaling.
 
-const MEMBERS_ROOM = 'members'; // everyone admitted; the audience for `online`
-
 function createRealtime({
   io,
   matchmaker = createMatchmaker(),
@@ -40,9 +39,7 @@ function createRealtime({
     createRateLimiter({ capacity: burst, refillPerMs: perMinute / 60000 });
   const nextLimiter = limiterFor(L.nextBurst, L.nextsPerMinute);
   const messageLimiter = limiterFor(L.messageBurst, L.messagesPerMinute);
-
-  let onlineTimer = null;
-  let onlineDirty = false;
+  const presence = createPresence({ io, matchmaker, intervalMs: onlineIntervalMs });
 
   const socketOf = (id) => io.sockets.sockets.get(id);
 
@@ -64,26 +61,6 @@ function createRealtime({
     }
   }
 
-  // Sends the current head count to every member, at most once per interval. Changes
-  // inside the interval are folded into one more broadcast when it ends. Returns true if
-  // it broadcast right now (so the caller knows its own socket already got the count).
-  function announceOnline() {
-    if (onlineTimer) {
-      onlineDirty = true;
-      return false;
-    }
-    io.to(MEMBERS_ROOM).emit('online', { count: matchmaker.stats().users });
-    onlineTimer = setTimeout(() => {
-      onlineTimer = null;
-      if (onlineDirty) {
-        onlineDirty = false;
-        announceOnline();
-      }
-    }, onlineIntervalMs);
-    onlineTimer.unref();
-    return true;
-  }
-
   // A handler that throws must not take the server down or leave the visitor hanging.
   // The error text is logged without the payload (it may contain chat text).
   const safe = (socket, handler) => (...args) => {
@@ -102,7 +79,7 @@ function createRealtime({
   // Puts a validated visitor (socket.data.nickname and .mode are set) into matching.
   function admit(socket) {
     try {
-      socket.join(MEMBERS_ROOM);
+      presence.enter(socket);
       const result = matchmaker.enqueue({
         id: socket.id,
         nickname: socket.data.nickname,
@@ -111,7 +88,7 @@ function createRealtime({
       if (result.status === 'matched') announceMatch(result);
       else if (result.status === 'waiting') socket.emit('waiting');
       else reject(socket);
-      if (!announceOnline()) socket.emit('online', { count: matchmaker.stats().users });
+      if (!presence.announce()) presence.tell(socket);
     } catch (err) {
       // We cannot tell what state the visitor is in, so do not keep the connection.
       console.error('[realtime] admit failed:', err.message);
@@ -161,13 +138,12 @@ function createRealtime({
       const wasMember = matchmaker.stateOf(socket.id) !== null;
       const { ended } = matchmaker.disconnect(socket.id);
       if (ended) sendTo(ended.partnerId, 'partner_left');
-      if (wasMember) announceOnline();
+      if (wasMember) presence.announce();
     }));
   }
 
   function close() {
-    clearTimeout(onlineTimer);
-    onlineTimer = null;
+    presence.stop();
     nextLimiter.stop();
     messageLimiter.stop();
   }
