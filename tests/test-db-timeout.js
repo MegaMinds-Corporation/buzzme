@@ -10,7 +10,7 @@ const silent = net.createServer(() => {}); // accepts, never replies
 silent.listen(0, '127.0.0.1', async () => {
   process.env.DATABASE_URL = `postgres://u:p@127.0.0.1:${silent.address().port}/d?sslmode=disable`;
   process.env.IP_HASH_SECRET = 'x'.repeat(40);
-  const { isBanned } = require('../src/db');
+  const { isBanned } = require('../src/models/Ban');
 
   const started = Date.now();
   const outcome = await Promise.race([

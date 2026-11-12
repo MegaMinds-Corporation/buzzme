@@ -1,6 +1,6 @@
 'use strict';
 
-const { pool } = require('./config/database');
+const { pool } = require('../config/database');
 
 // A visitor is banned if an unexpired ban matches their IP hash OR device token hash.
 // expires_at NULL means a permanent ban. `device_token = NULL` is never true in SQL,
@@ -17,8 +17,4 @@ async function isBanned({ ipHash, deviceTokenHash = null }, db = pool) {
   return result.rowCount > 0;
 }
 
-function close() {
-  return pool.end();
-}
-
-module.exports = { isBanned, close };
+module.exports = { isBanned };

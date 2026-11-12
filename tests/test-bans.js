@@ -1,6 +1,6 @@
 'use strict';
 
-// Tests src/utils/hash.js and src/db.js (isBanned). Database checks run inside a
+// Tests src/utils/hash.js and src/models/Ban.js (isBanned). Database checks run inside a
 // transaction that is ALWAYS rolled back, in a temporary schema: nothing is saved.
 
 const fs = require('fs');
@@ -8,7 +8,8 @@ const path = require('path');
 const { Client } = require('pg');
 const config = require('../src/config');
 const { makeHasher } = require('../src/utils/hash');
-const { isBanned, close } = require('../src/db');
+const { isBanned } = require('../src/models/Ban');
+const { pool } = require('../src/config/database');
 
 let passed = 0;
 let failed = 0;
@@ -67,7 +68,7 @@ const check = (ok, label, detail = '') => {
     const left = await c.query(`SELECT 1 FROM information_schema.schemata WHERE schema_name = 'buzzme_test'`);
     check(left.rowCount === 0, 'test schema discarded (nothing persisted)');
     await c.end();
-    await close();
+    await pool.end();
   }
 
   console.log(`\npassed=${passed} failed=${failed}`);

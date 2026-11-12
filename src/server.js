@@ -1,13 +1,14 @@
 'use strict';
 
 const config = require('./config');
-const db = require('./db');
+const Ban = require('./models/Ban');
+const { pool } = require('./config/database');
 const { makeHasher } = require('./utils/hash');
 const { createApp } = require('./app');
 
 const { server, io } = createApp({
   config,
-  isBanned: db.isBanned,
+  isBanned: Ban.isBanned,
   hash: makeHasher(config.ipHashSecret),
 });
 
@@ -18,7 +19,7 @@ server.listen(config.port, () => {
 function shutdown(signal) {
   console.log(`[server] ${signal} received, shutting down`);
   io.close(async () => {
-    await db.close().catch(() => {});
+    await pool.end().catch(() => {});
     process.exit(0);
   });
   setTimeout(() => process.exit(1), 5000).unref();
